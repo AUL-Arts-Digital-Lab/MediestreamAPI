@@ -1,0 +1,101 @@
+---
+title: "Importing data from the Mediestream-API"
+author: "Max Odsbjerg Pedersen"
+format: html
+editor: source
+---
+
+Currently the API delivers public data from the Royal Danish Library's newspaper collection. Data from the Danish newspaper has to be older than 140 years to qualify af "public data". The API is presented in the Swagger UI and can return data in JSON, JSONL and CSV. Requests to the API are based on search queries in the Mediestream-platform. 
+
+Technical documentation and explanations on with fields are exported can be found on the [Swagger UI](http://labs.statsbiblioteket.dk/labsapi/api//api-docs?url=/labsapi/api/openapi.yaml)
+
+# Loading relevant libraries
+
+The dataset is processed in the software programme R, offering various methods for statistical analysis and graphic representation of the results. In R, one works with packages each adding numerous functionalities to the core functions of R. In this example, the relevant packages are:
+
+Documentation for each package: <br>
+*https://www.tidyverse.org/packages/ <br>
+*https://cran.r-project.org/web/packages/tidytext/vignettes/tidytext.html <br>
+*https://lubridate.tidyverse.org/ <br>
+*https://ggplot2.tidyverse.org/ <br>
+*https://cran.r-project.org/web/packages/ggwordcloud/vignettes/ggwordcloud.html<br>
+
+Additional information about R: 
+https://www.r-project.org/
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidytext)
+library(ggwordcloud)
+library(urltools)
+```
+
+# Loading data from articles about the constitution in the years 1849-1950
+
+The dataset is loaded into R. This is done via a retrieve link from the API. This link is created by the [Swagger UI](http://labs.statsbiblioteket.dk/labsapi/api//api-docs?url=/labsapi/api/openapi.yaml), which is documentation and user interface for the API. Change the green link below to your retrieve link (the link needs to be in quotation marks):
+
+```{r}
+link <- "http://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=grundlov%20AND%20py%3A%5B1849%20TO%201850%5D&fields=link&fields=timestamp&fields=fulltext_org&fields=familyId&fields=lplace&max=-1&structure=header&structure=content&format=CSV"
+```
+
+
+Now the URL is stored in R as "link. The URL above is hard to understand partly because of the URL-encoding. We can use the function `url_decode` to see the URL in a more human readable mode:
+
+```{r}
+url_decode(link)
+```
+
+Here we can se the query we created in mediestream: 
+
+
+Next step is to load the data into R: 
+
+```{r}
+grundlov_1849_1850 <- read_csv(link)
+```
+1463 hits - exaclty what we saw in Mediestream.
+
+## Analysing data from Mediestream-API
+
+We have different metadata in the current data. E.g. the publication location. Let's see the geographical dispersion of the artciles about the constitution: 
+
+```{r}
+grundlov_1849_1850 %>% 
+  count(lplace, sort = TRUE)
+```
+We also have meta data on which newspaper the articles derives from: 
+
+```{r}
+grundlov_1849_1850 %>% 
+  count(familyId, sort = TRUE)
+```
+
+# Text mining: 
+Text mining is a term that covers a large variety of approaches and concrete methods. In this example we will use the tidytext approach, which is presented in the book [Text Mining with R - a tidy approach](https://www.tidytextmining.com). The notion is to take text and break it into individual words. In this way, there will be just one word per row in the dataset. This is achieved by using the `unnest_tokens`-function:
+
+```{r}
+grundlov_tidy <- grundlov_1849_1850 %>% 
+  unnest_tokens(word, fulltext_org)
+```
+
+Now we can count the most frequent words: 
+
+```{r}
+grundlov_tidy %>% 
+  count(word, sort = TRUE)
+```
+
+Dissapointing! Stop words. We need to employ a stop word list. But this is old Danish and full of OCR-misreadings. Thus we employ a somewhat crude 1800-century stop words list: 
+
+```{r}
+stopord_1800 <- read_csv("https://gist.githubusercontent.com/maxodsbjerg/1537cf14c3d46b3d30caa5d99f8758e9/raw/9f044a38505334f035be111c9a3f654a24418f6d/stopord_18_clean.csv")
+```
+
+Using "anti_join" before "count" we can sort out the the stop words: 
+
+```{r}
+grundlov_tidy %>% 
+  anti_join(stopord_1800) %>% 
+  count(word, sort = TRUE)
+```
+
